@@ -1,0 +1,4 @@
+xlsxwriter
+pandas
+openpyxl
+chardet
