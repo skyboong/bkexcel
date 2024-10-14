@@ -4,3 +4,7 @@
 - BK Choi
 - stsboongkee@gmail.com 
 - Oct 10th, 2024 
+
+
+- install
+- pip install git+https://github.com/skyboong/bkexcel.git
