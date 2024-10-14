@@ -12,6 +12,8 @@
 ## tutorial
 
 ```
+# The annual government investment amount, private investment amount, and the ratio of government investment to GDP are presented.
+
 import pandas as pd
 from pandas import DataFrame, Series
 
