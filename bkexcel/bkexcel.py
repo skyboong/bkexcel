@@ -1,10 +1,13 @@
+
 # bkexcel.py
 # 2024.10.09
+# 2024.10.23
 
 import pandas as pd
 import numpy as np
 from pandas.core.interchange.dataframe_protocol import DataFrame
 from unicodedata import category
+from icecream import ic
 
 from xlsxwriter.utility import xl_rowcol_to_cell, xl_range, xl_range_abs
 
@@ -104,12 +107,15 @@ class BKExcelWriter:
     def close(self):
         self.writer.close()
 
-    def chart_scatter(self, col_x=None, col_y=None, col_size=None,
-                      col_name=None, title=None, pos_row=None, pos_col=None, style_no=None,
-                      fixed_node_size=10):
-        """Insert scatter chart into Excel sheet"""
-        self.graph_no += 1
 
+
+    def chart_scatter(self, col_x=None, col_y=None, col_size=None,
+                       col_name=None, title=None, pos_row=None, pos_col=None,
+                       style_no=None, fixed_node_size=10, min_range=3, max_range=30,
+                       title_font_size=10):
+        """Insert scatter chart into Excel sheet."""
+
+        self.graph_no += 1
         df = self.df
         sheet_name = self.sheet_name
 
@@ -117,47 +123,79 @@ class BKExcelWriter:
         worksheet = self.writer.sheets[sheet_name]
 
         columns = df.columns.tolist()
-        if col_x is not None:
-            xi = columns.index(col_x)
-        else:
-            xi = 0
-        if col_y is not None:
-            yi = columns.index(col_y)
-        else:
-            yi = 1
-        namei = columns.index(col_name)
+
+        # X, Y, name, size 컬럼의 인덱스 결정
+        xi = columns.index(col_x) if col_x else 0
+        yi = columns.index(col_y) if col_y else 1
+        namei = columns.index(col_name) if col_name else None
 
         if style_no is None:
             style_no = self.style_no
 
         self.chart_position()
-        pos_row = self.pos_row
-        pos_col = self.pos_col
+        pos_row = self.pos_row if pos_row is None else pos_row
+        pos_col = self.pos_col if pos_col is None else pos_col
 
+        # Scatter chart 생성
         chart = workbook.add_chart({'type': 'scatter'})
 
-        if col_size is None:
-            pass
-        else:
-            col_size_list = df[col_size].tolist()
 
-        for i in range(1, len(df.index)+1): # 엑셀 행은 1부터 시작하기에.
-            chart.add_series({
-                'name': [sheet_name, i, namei], #
-                'categories': [sheet_name, i, xi, i, xi], # x 축
-                'values': [sheet_name, i, yi, i, yi], # y 축
+        col_size_list = None
+        if col_size:
+            # col_size가 있으면, 해당 값을 리스트로 저장 (정수로 변환)
+            # 최소 및 최대 크기 (xlsxwriter의 범위)
+            #min_range = 2
+            #max_range = 72
+            # 너무 크게 되는 것을 제외시킴
+            if max_range > 72 :
+                max_range = 72
+
+            # 데이터에서 최소, 최대 값을 추출
+            min_size = min(df[col_size])
+            max_size = max(df[col_size])
+
+            # 크기 데이터를 2 ~ 72 사이로 스케일링
+            scaled_sizes = [
+                ((each_size - min_size) / (max_size - min_size)) * (max_range - min_range) + min_range for each_size in
+                df[col_size]
+            ]
+            try:
+                # 정수로 변환 가능한지 확인하고 변환
+                col_size_list = [int(size) for size in scaled_sizes]
+            except ValueError:
+                raise ValueError(f"Column {col_size} contains non-integer values. Ensure all values are integers.")
+
+        # 엑셀 행은 1부터 시작하므로, 각 행에 대해 시리즈 추가
+        for i in range(1, len(df.index) + 1):
+            series_options = {
+                'name': [sheet_name, i, namei] if namei is not None else '',
+                'categories': [sheet_name, i, xi, i, xi],  # X축 데이터
+                'values': [sheet_name, i, yi, i, yi],  # Y축 데이터
                 'marker': {
                     'type': 'circle',
-                    'size': fixed_node_size,  # 사이즈를 크기 값으로 설정
-                },
-            })
+                    'size': col_size_list[i - 1] if col_size_list else fixed_node_size,  # 마커 크기 설정
+                    'border':{'color':'black'},
 
-        chart.set_title({'name': title})
-        chart.set_x_axis({'name': col_x})
-        chart.set_y_axis({'name': col_y})
+                },
+            }
+
+            # series 추가
+            chart.add_series(series_options)
+
+        # 차트 제목과 축 설정
+        chart.set_title({'name': title if title else 'Scatter Chart',
+                        'size': title_font_size,
+                         'bold':True})
+        chart.set_x_axis({'name': col_x if col_x else 'X-axis'})
+        chart.set_y_axis({'name': col_y if col_y else 'Y-axis'})
+
+        # 스타일 설정
         chart.set_style(style_no)
 
+        # 차트를 시트에 삽입
         worksheet.insert_chart(pos_row, pos_col, chart)
+
+
 
     def chart_combined(self, col_x=None, col_left=None, col_right=None, title='',
                        pos_row=None, label_left=None,
@@ -231,32 +269,6 @@ class BKExcelWriter:
         chart1.set_style(style_no)
         worksheet.insert_chart(pos_row, pos_col, chart1)
 
-    def chart_bar_old(self, col_x=None, col_y=None, title='', name='', pos_row=1, pos_col=3, style_no=11):
-        """Add a bar chart to the sheet"""
-
-        df = self.df
-        sheet_name =  self.sheet_name
-
-        workbook = self.writer.book
-        worksheet = self.writer.sheets[sheet_name]
-
-        (max_row, max_col) = df.shape
-
-        columns = df.columns.tolist()
-        col_xi = columns.index(col_x)
-        col_yi = columns.index(col_y)
-
-        chart = workbook.add_chart({'type': 'column'})
-        chart.add_series({
-            'name':[sheet_name, 1, col_xi, 1, col_xi],
-            'categories': [sheet_name, 1, col_xi, max_row, col_xi],
-            'values': [sheet_name, 1, col_yi, max_row, col_yi],
-        })
-        chart.set_title({'name': title})
-        chart.set_legend({'none': True, 'position': 'top'})
-        chart.set_style(style_no)
-
-        worksheet.insert_chart(pos_row, pos_col, chart)
 
     def chart(self, col_x=None, columns_list=[], col_begin=None, col_end=None, col_value_list=None, title='', name='',
                   pos_row=None, pos_col=None, chart_type='column',
@@ -341,12 +353,6 @@ class BKExcelWriter:
                 print('* waring ! : chart_type is not defined correctly !')
                 return
 
-
-
-
-
-
-
         chart.set_style(style_no)
         chart.set_title({'name': title})
         chart.set_legend({'none': False, 'position': 'top'})
@@ -360,120 +366,15 @@ class BKExcelWriter:
             })
         worksheet.insert_chart(pos_row, pos_col, chart)
 
-    def chart_line_old(self, col_x=None, col_begin=None, col_end=None, title='', name='',
-                   pos_row=None, pos_col=None, subtype=None, style_no=None):
-        """Add a bar chart to the sheet"""
-        #print(">>> chart_line_multi()")
-        self.graph_no += 1
-        df = self.df
-        sheet_name =  self.sheet_name
-        if col_x is None:
-            col_x = self.x_column
-
-        workbook = self.writer.book
-        worksheet = self.writer.sheets[sheet_name]
-
-        (max_row, max_col) = df.shape
-
-        # col_end is None 일때
-        if col_end is None:
-            col_end = col_begin
-        if style_no is None:
-            style_no = self.style_no
-
-
-        self.chart_position()
-        pos_row = self.pos_row
-        pos_col = self.pos_col
-
-
-        columns = df.columns.tolist()
-        col_xi = columns.index(col_x)
-        col_1 = columns.index(col_begin)
-        col_2 = columns.index(col_end)
-
-        chart = workbook.add_chart({'type': 'line', 'subtype': subtype})
-
-
-        for col_i in range(col_1,col_2+1):
-            chart.add_series({
-                'name':[sheet_name, 0, col_i],
-                'categories': [sheet_name, 1, col_xi, max_row, col_xi],
-                'values': [sheet_name, 1, col_i, max_row, col_i],
-            })
-
-        chart.set_style(style_no)
-        chart.set_title({'name': title})
-        chart.set_legend({'none': False, 'position': 'top'})
-
-        if subtype == 'percent_stacked':
-            chart.set_y_axis({
-                'min': 0,
-                'max': 1,  # 1 = 100%
-                'num_format': '0%',  # 퍼센트 형식
-                'major_gridlines': {'visible': True},  # 주요 그리드라인 표시
-            })
-        worksheet.insert_chart(pos_row, pos_col, chart)
-
-
-    def chart_pie(self, col_name=None,
-                  col_value=None,
-                  title='',
-                  pos_row=None, pos_col=None, style_no=None, precision=1):
-        """Add a bar chart to the sheet"""
-        #ic(">>> chart_pie()")
-        self.graph_no += 1
-        df = self.df
-        sheet_name =  self.sheet_name
-
-        workbook = self.writer.book
-        worksheet = self.writer.sheets[sheet_name]
-
-        (max_row, max_col) = df.shape
-
-        # 놀기
-        columns = df.columns.tolist()
-        col_xi = columns.index(col_name)
-        col_vi = columns.index(col_value)
-
-        if style_no is None:
-            style_no = self.style_no
-
-        self.chart_position()
-        pos_row = self.pos_row
-        pos_col = self.pos_col
-
-        chart = workbook.add_chart({'type': 'doughnut'})
-
-        # 소수점 표현
-        if precision == 1:
-            number_foramt = '0.0%'
-        elif precision == 2:
-            number_foramt = '0.00%'
-        else:
-            number_foramt = '0%'
-        # 차트에 데이터 추가
-        chart.add_series({
-            'name': [sheet_name, 0, col_xi],
-            'categories': [sheet_name, 1, col_xi, max_row, col_xi],
-            'values': [sheet_name, 1, col_vi, max_row, col_vi],
-            'data_labels': {'percentage': True,
-                            'number_format': number_foramt,
-                            },  # 백분율 표시
-        })
-
-        chart.set_style(style_no)
-        chart.set_title({'name': title})
-        chart.set_legend({'none': False, 'position': 'top'})
-
-
-        worksheet.insert_chart(pos_row, pos_col, chart)
 
 
     def set_x(self, name=None):
         if name is not None:
             self.x_column = name
             #print(f"* x column is set to be {name}")
+
+    def set_width(self, w=3):
+        self.w = w
 
     def set_settings(self, x_column, w=2, left_gap=8, style_no=11):
         self.set_x(name=x_column)
@@ -483,8 +384,8 @@ class BKExcelWriter:
 
     def chart_position(self):
         # pos_row 자동 할당하기
-        self.pos_row = (self.graph_no-1) // self.w * self.pos_row_delta + self.pos_row_initial
-        self.pos_col = (self.graph_no-1) % self.w  * self.pos_col_delta + self.pos_col_initial
+        self.pos_row = 1 + (self.graph_no-1) // self.w * self.pos_row_delta + self.pos_row_initial
+        self.pos_col = 1 + (self.graph_no-1) % self.w  * self.pos_col_delta + self.pos_col_initial
         #print(self.pos_row, self.pos_col)
 
 
