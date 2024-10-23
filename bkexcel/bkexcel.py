@@ -3,6 +3,8 @@
 # 2024.10.09
 # 2024.10.23
 
+import os
+import datetime
 import pandas as pd
 import numpy as np
 from pandas.core.interchange.dataframe_protocol import DataFrame
@@ -10,6 +12,16 @@ from unicodedata import category
 from icecream import ic
 
 from xlsxwriter.utility import xl_rowcol_to_cell, xl_range, xl_range_abs
+
+def generate_filename_with_timestamp(original_filename):
+    # 파일명과 확장자를 분리
+    base_name, extension = os.path.splitext(original_filename)
+
+    # 현재 시간을 "YYYYMMDD_HHMMSS" 형식으로 가져오기
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # 파일 이름에 시간 정보를 추가하여 반환
+    return f"{base_name}_{current_time}{extension}"
 
 class BKExcelWriter:
     def __init__(self, writer=None, save_file_name=None, engine='xlsxwriter', sheet_name=None):
@@ -112,7 +124,8 @@ class BKExcelWriter:
     def chart_scatter(self, col_x=None, col_y=None, col_size=None,
                        col_name=None, title=None, pos_row=None, pos_col=None,
                        style_no=None, fixed_node_size=10, min_range=3, max_range=30,
-                       title_font_size=10):
+                       title_font_size=10,
+                       line = False, line_width=8, line_marker_size=5, alpha=0.8):
         """Insert scatter chart into Excel sheet."""
 
         self.graph_no += 1
@@ -123,6 +136,9 @@ class BKExcelWriter:
         worksheet = self.writer.sheets[sheet_name]
 
         columns = df.columns.tolist()
+
+        # 최대 값
+        (max_row, max_col) = df.shape
 
         # X, Y, name, size 컬럼의 인덱스 결정
         xi = columns.index(col_x) if col_x else 0
@@ -137,7 +153,10 @@ class BKExcelWriter:
         pos_col = self.pos_col if pos_col is None else pos_col
 
         # Scatter chart 생성
-        chart = workbook.add_chart({'type': 'scatter'})
+        if line :
+            chart = workbook.add_chart({'type': 'scatter', 'subtype':'straight_with_markers'})
+        else:
+            chart = workbook.add_chart({'type': 'scatter'})
 
 
         col_size_list = None
@@ -175,12 +194,26 @@ class BKExcelWriter:
                     'type': 'circle',
                     'size': col_size_list[i - 1] if col_size_list else fixed_node_size,  # 마커 크기 설정
                     'border':{'color':'black'},
-
+                    'line': {'color': 'black'},
                 },
             }
-
             # series 추가
             chart.add_series(series_options)
+
+        # line 추가 부분
+        if col_x in columns and col_y in columns:
+            col_xi = df.columns.tolist().index(col_x)
+            col_yi = df.columns.tolist().index(col_y)
+
+            chart.add_series({
+                'name': [sheet_name, 0, col_xi],
+                'categories': [sheet_name, 1, col_xi, max_row, col_xi],
+                'values': [sheet_name, 1, col_yi, max_row, col_yi],
+                'fill': {'transparency': alpha},
+                'marker':{ 'size':line_marker_size,
+                           'type':'circle'},
+                'line':{'width':line_width}
+            })
 
         # 차트 제목과 축 설정
         chart.set_title({'name': title if title else 'Scatter Chart',
@@ -199,7 +232,8 @@ class BKExcelWriter:
 
     def chart_combined(self, col_x=None, col_left=None, col_right=None, title='',
                        pos_row=None, label_left=None,
-                       label_right=None, pos_col=None, style_no=None):
+                       label_right=None, pos_col=None, style_no=None,
+                       line_width=2):
         """Insert combined chart into Excel sheet"""
         self.graph_no += 1
         df = self.df
@@ -248,6 +282,8 @@ class BKExcelWriter:
             'categories': category1,
             'values': values2,
             'y2_axis': True,
+            'line':{'width':line_width}
+
         })
 
         chart1.combine(chart2)
