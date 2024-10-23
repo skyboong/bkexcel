@@ -38,9 +38,7 @@ data = [[2012, 13822078.0, 41628038.0, 3.85],
  [2022, 26328329.0, 86317679.0, 5.21]]
 
 df=DataFrame(data, columns=['PY','FUND1','FUND2', 'PCT'])
-```
-# Excel Sheets and Charts 
-```
+
 ex = be.BKExcelWriter(save_file_name=add_timestamp_to_filename("test.xlsx"))     
 ex.to_sheet(df=df, sheet_name="Sheet1")
 ex.set_settings(x_column='PY', w=3, left_gap=len(df.columns), style_no=10)
