@@ -2,3 +2,4 @@ xlsxwriter
 pandas
 openpyxl
 chardet
+jupyter
