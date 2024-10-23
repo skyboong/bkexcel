@@ -46,7 +46,7 @@ setup(
     description="This program helps enhance user convenience when saving a pandas DataFrame to an Excel file by adding Excel sheets and Excel charts.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/skyboong/bk_excel",
+    url="https://github.com/skyboong/bkexcel",
     packages=find_packages(),
     install_requires=parse_requirements("requirements.txt", encoding=requirements_encoding),
     classifiers=[
