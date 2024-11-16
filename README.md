@@ -55,7 +55,30 @@ ex.chart_scatter(col_x='PY', col_y=col1, col_name='PY', title=f"년도별 투자
 ex.close()
 
 ```
+### Example 1-2
+```
+df=DataFrame(data, columns=['PY','FUND1','FUND2', 'PCT'])
 
+ex = beg.BKExcelWriter(save_file_name="test.xlsx")     
+t1 = df['PCT'].mean()
+t2 = df['FUND1'].quantile(0.99)
+ex.to_sheet(df=df, sheet_name="Sheet1", col_condition_list=[('FUND1',t2), ('PCT',t1)],
+            dic_precision={'PCT':1, 'FUND1':0, 'FUND2':0}, font_size=9)
+ex.set_settings(x_column='PY', w=3, left_gap=len(df.columns), style_no=10)
+col1 = 'FUND1' 
+col2 = 'FUND2'
+col3 = 'PCT'
+for ct in ['column', 'bar', 'line','area', 'radar', 'scatter','pie', 'doughnut']:
+    ex.chart(columns_list=[col1, col2], title=f"Graph {ct}", chart_type=ct)
+    ex.chart(columns_list=[col1, col2], title=f"Graph {ct} stacked", chart_type=ct, subtype='stacked')
+    ex.chart(columns_list=[col1, col2], title=f"Graph {ct} percent_stacked", chart_type=ct, subtype='percent_stacked')
+
+ex.chart_combined(col_left=col1, col_right=col3, title=f"{col1} and {col3}")
+ex.chart_scatter(col_x='PY', col_y=col1, col_name='PY', title=f"년도별 투자액", col_size=col2, fixed_node_size=5)
+ex.close()
+
+
+```
 ## Example 2 
 
 ```
