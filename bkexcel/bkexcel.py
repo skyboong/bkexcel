@@ -1,7 +1,7 @@
 # bkexcel.py
 # 2024.10.09
 # 2024.10.23
-# 2024.11.16
+# 2024.11.19
 
 import os
 import datetime
@@ -11,7 +11,6 @@ import pandas as pd
 from pandas import DataFrame, Series
 import numpy as np
 
-
 from unicodedata import category
 from icecream import ic
 
@@ -20,10 +19,8 @@ from xlsxwriter.utility import xl_rowcol_to_cell, xl_range, xl_range_abs
 def generate_filename_with_timestamp(original_filename):
     # 파일명과 확장자를 분리
     base_name, extension = os.path.splitext(original_filename)
-
     # 현재 시간을 "YYYYMMDD_HHMMSS" 형식으로 가져오기
     current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
     # 파일 이름에 시간 정보를 추가하여 반환
     return f"{base_name}_{current_time}{extension}"
 
@@ -31,8 +28,9 @@ class BKExcelWriter:
     def __init__(self, writer=None, save_file_name=None, engine='xlsxwriter', sheet_name=None, add_prefix=True):
 
         if add_prefix:
-            save_file_name = generate_filename_with_timestamp(save_file_name)
-        self.writer = writer or pd.ExcelWriter(save_file_name, engine=engine)
+            self.save_file_name = generate_filename_with_timestamp(save_file_name)
+
+        self.writer = writer or pd.ExcelWriter(self.save_file_name, engine=engine)
         self.sheet_name = 'Sheet1' if sheet_name is None else sheet_name
         self.df = None
         self.x_column = None
@@ -117,7 +115,7 @@ class BKExcelWriter:
                     worksheet.write(i+1, pi, df.iloc[i, columns.index(k)], color_format1)
 
         if col_con1 and col_con2:
-            print("col_con1 and col_con2")
+            #print("col_con1 and col_con2")
             start_row = 1 # 0은 header
             end_row = len(df.index) # 0은 헤더가 차지하기에, 1 부터 시작함
             start_col = columns.index(col_con1)
@@ -159,6 +157,7 @@ class BKExcelWriter:
 
     def close(self):
         self.writer.close()
+        print(f">>> saved : {self.save_file_name}")
 
 
 
@@ -261,7 +260,7 @@ class BKExcelWriter:
         # Insert chart into sheet
         worksheet.insert_chart(pos_row, pos_col, chart)
 
-    
+
     def chart_scatter_beta0(self, col_x=None, col_y=None, col_size=None, col_name=None,
                             name_of_evolution_track = None,
                        title=None, auto_no_title=True,
@@ -370,7 +369,7 @@ class BKExcelWriter:
                     #'marker':{'type':None},
                     'line':{'width':line_width}
                 })
-                print(745)
+                #print(745)
 
             # 차트 제목과 축 설정
             chart.set_title({'name': title if title else 'Scatter Chart',
@@ -394,14 +393,222 @@ class BKExcelWriter:
         except Exception as err:
             raise Exception(err)
 
+    def chart_combined_v3(self,
+                          col_bottom=None,
+                          col_left_list=None,
+                          col_right_list=None,
+                          title='', auto_no_title=True, title_font_size=10,
+                          left_name_list=None, right_name_list=None,
+                          left_axis_title=None, right_axis_title=None, bottom_axis_title=None,
+                          pos_row=None, pos_col=None,
+                          style_no=None, line_width=2, dict_scale={},
+                          right_y_axis_range=None,
 
-    def chart_combined_v2(self, col_bottom=None, col_left=None, col_right_list=None, title='', auto_no_title=True,
-                          title_font_size=10, left_name=None, right_name=None, left_axis_title=None,
-                          right_axis_title=None, pos_row=None, pos_col=None, style_no=None, line_width=2, dict_scale={},
-                          right_y_axis_range=None):
+                          left_chart_style='column',
+                          right_chart_style='line',
+
+                          data_type="L",
+                          col_select=None,
+
+                          col_begin=None,
+                          col_end=None,
+                          row_begin_left=None,
+                          row_begin_right=None,
+                          row_end_left=None,
+                          row_end_right=None,
+                          row_left_list=None,
+                          row_right_list=None,
+
+                          data_labels_left_tf=False,
+                          data_labels_right_tf=False,
+                          data_labels_left_num_format=None,
+                          data_labels_right_num_format=None,
+                          left_labels_font_size=6,
+                          right_labels_font_size=6,
+                          ):
+
         """Insert combined chart into Excel sheet"""
+        # chart1, chat2 2개 chart 를 만들어서 결합시켜줌
+        # bottom : Category_both 공통되게 지정해줌
+        # name1, value1 : 왼쪽 y 값
+        # name2, value2 : 오른쪽 y값
+
         ic.disable()
 
+        self.graph_no += 1
+        title = f'Fig {self.graph_no}. ' + title if auto_no_title else title
+        df = self.df
+
+        sheet_name = self.sheet_name
+
+        col_bottom = self.x_column if col_bottom is None else col_bottom
+        style_no = self.style_no if style_no is None else style_no
+
+        left_name_list = col_left_list if left_name_list is None else left_name_list
+        right_name_list = col_right_list if right_name_list is None else right_name_list
+
+        left_axis_title = left_axis_title if left_axis_title is None else left_axis_title
+        right_axis_title = right_axis_title if right_axis_title is None else right_axis_title
+
+        # pos_row 자동 할당하기
+        self.chart_position()
+        pos_row = self.pos_row
+        pos_col = self.pos_col
+        #ic()
+        workbook = self.writer.book
+        worksheet = self.writer.sheets[sheet_name]
+
+        (max_row, max_col) = df.shape
+
+        columns = df.columns.tolist()
+
+
+
+        match(data_type):
+            case 'L'|'Long':
+
+                col_bottom_i = columns.index(col_bottom) if col_bottom in columns else 0
+                col_y1i_list = [columns.index(each) for each in col_left_list]
+                col_y2i_list = [columns.index(each) for each in col_right_list]
+
+                category_both = f"={sheet_name}!{xl_range_abs(1, col_bottom_i, max_row, col_bottom_i)}"
+                # chart1
+                chart1 = workbook.add_chart({'type': left_chart_style})
+                for i, col_yi in enumerate(col_y1i_list):
+                    values = f"={sheet_name}!{xl_range_abs(1, col_yi, max_row, col_yi)}"
+                    ic()
+                    chart1.add_series({
+                        'name': left_name_list[i],
+                        'categories': category_both,
+                        'values': values,
+                        'line': {'width': line_width}
+                    })
+                # chart2
+                chart2 = workbook.add_chart({'type': right_chart_style})
+                for i, col_yi in enumerate(col_y2i_list):
+                    ic(col_yi)
+                    values = f"={sheet_name}!{xl_range_abs(1, col_yi, max_row, col_yi)}"
+                    ic()
+                    chart2.add_series({
+                        'name': right_name_list[i],
+                        'categories': category_both,
+                        'values': values,
+                        'y2_axis': True,
+                        'line': {'width': line_width}
+                    })
+            case 'W'|'WIDE':
+                # 컬럼 인덱스 번호 정리
+                columns = df.columns.tolist()
+                columns_list_no = []
+                # 선택된 값을 가지는 row 추출 하기 위하여
+                col_select = columns[0] if col_select is None else col_select
+
+                col_begin_i = columns.index(
+                    col_begin) if col_begin is not None and col_begin in columns else 1  # columns[0]
+                col_end_i = columns.index(col_end) if col_end is not None and col_end in columns else len(
+                    columns) - 1  # columns[0]
+
+                # row 1 순위
+                row_left_list_no = []
+                row_right_list_no = []
+
+                rows = df[col_select].tolist()
+                if len(row_left_list) > 0:
+                    for each in row_left_list:
+                        row_left_list_no.append(rows.index(each) + 1)
+                if len(row_right_list) > 0:
+                    for each in row_right_list:
+                        row_right_list_no.append(rows.index(each) + 1)
+
+                #category_both = f"={sheet_name}!{xl_range_abs(0, col_begin_i, 0, col_end_i)}"
+                category_both = f"={sheet_name}!{xl_range_abs(0, col_begin_i, 0, col_end_i)}"
+                print(f"category_both={category_both}")
+
+                data_labels_left = {
+                    'value': True if data_labels_left_tf else False,
+                    'num_format': '#,##0.00' if data_labels_left_num_format is None else data_labels_left_num_format,
+                    'font':{'size':left_labels_font_size}
+                }
+                data_labels_right = {
+                    'value': True if data_labels_right_tf else False,
+                    'num_format': '#,##0.00' if data_labels_right_num_format is None else data_labels_right_num_format,
+                    'font':{'size':right_labels_font_size}
+                }
+                # chart1
+                chart1 = workbook.add_chart({'type': left_chart_style})
+                for i, row_i in enumerate(row_left_list_no):
+                    #category_both = f"={sheet_name}!{xl_range_abs(0, col_begin_i, 0, col_end_i)}"
+                    values = f"={sheet_name}!{xl_range_abs(row_i, col_begin_i, row_i, col_end_i)}"
+                    ic()
+                    chart1.add_series({
+                        'name': left_name_list[i],
+                        'categories': category_both,
+                        'values': values,
+                        'line': {'width': line_width},
+                        'data_labels':data_labels_left
+                    })
+                # chart2
+                chart2 = workbook.add_chart({'type': right_chart_style})
+                for i, row_i in enumerate(row_right_list_no):
+                    #category_both = f"={sheet_name}!{xl_range_abs(0, col_begin_i, 0, col_end_i)}"
+                    values = f"={sheet_name}!{xl_range_abs(row_i, col_begin_i, row_i, col_end_i)}"
+                    ic()
+                    chart2.add_series({
+                        'name': right_name_list[i],
+                      #  'categories': category_both,
+                        'values': values,
+                        'y2_axis': True,
+                        'line': {'width': line_width},
+                        'data_labels':data_labels_right
+                    })
+            case _ :
+                raise ValueError(f'Unsupported data type: {data_type}, supported data types are L or W')
+
+
+        # Chart 합하기
+        chart1.combine(chart2)
+        chart1.set_title({'name': title,
+                          'name_font': {'size': title_font_size  # 원하는 폰트 크기 설정
+                                        }
+                          })
+        #print(f"**** col_bottom=", col_bottom)
+        bottom_axis_title = columns[0] if bottom_axis_title is None else bottom_axis_title
+        chart1.set_x_axis({'name': bottom_axis_title,
+                           'categories': category_both})
+        chart1.set_y_axis({'name': left_axis_title,
+                           'major_gridlines': {'visible': True}
+                           })
+        if right_y_axis_range is not None:
+            chart2.set_y2_axis({
+                'name': right_axis_title,  # 오른쪽 축 레이블
+                'major_gridlines': {'visible': False},  # 오른쪽 축에 그리드라인 표시하지 않음
+                'min': right_y_axis_range[0],
+                'max': right_y_axis_range[1],
+            })
+        else:
+            chart2.set_y2_axis({
+                'name': right_axis_title,  # 오른쪽 축 레이블
+                'major_gridlines': {'visible': False},  # 오른쪽 축에 그리드라인 표시하지 않음
+            })
+        chart1.set_legend({'none': False,
+                           'position': 'top'})
+        chart1.set_style(style_no)
+        dict_scale1 = {'x_scale': 1.0, 'y_scale': 1.0, 'width': 640, 'height': 480}
+        dict_scale = dict_scale1 if dict_scale is None else dict_scale
+        if dict_scale:
+            worksheet.insert_chart(pos_row, pos_col, chart1, dict_scale)
+        else:
+            worksheet.insert_chart(pos_row, pos_col, chart1)
+
+
+    def chart_combined_v2(self,
+                          col_bottom=None, col_left=None, col_right_list=None, title='', auto_no_title=True,
+                          title_font_size=10, left_name=None, right_name=None, left_axis_title=None,
+                          right_axis_title=None, pos_row=None, pos_col=None, style_no=None, line_width=2, dict_scale={},
+                          right_y_axis_range=None,
+                          data_type="L"):
+        """Insert combined chart into Excel sheet"""
+        ic.disable()
         self.graph_no += 1
         title = f'Fig {self.graph_no}. ' + title if auto_no_title else title
         df = self.df
@@ -490,7 +697,7 @@ class BKExcelWriter:
                 'major_gridlines': {'visible': False},  # 오른쪽 축에 그리드라인 표시하지 않음
 
             })
-        ic()
+
         chart1.set_legend({'none': False,
                             'position': 'top'})
         chart1.set_style(style_no)
@@ -502,8 +709,8 @@ class BKExcelWriter:
         else:
             worksheet.insert_chart(pos_row, pos_col, chart1)
 
-        #worksheet.insert_chart(pos_row, pos_col, chart1)
-        ic()
+
+
 
     def chart_combined(self, col_x=None, col_left=None, col_right=None, title='',
                        pos_row=None, label_left=None,
@@ -581,9 +788,11 @@ class BKExcelWriter:
         worksheet.insert_chart(pos_row, pos_col, chart1)
 
 
-    def chart(self, col_x=None, columns_list=[], col_begin=None, col_end=None,
-                  col_value_list=None,
-                  title='', title_font_size=10, auto_no_title=True, label_left=None,label_right=None, label_bottom=None,
+    def chart(self, col_x=None,
+                  columns_list=[], col_begin=None, col_end=None, col_value_list=None,
+                  rows_list=[], row_begin=None, row_end=None,
+                  title='', title_font_size=10, auto_no_title=True,
+                  label_left=None,label_right=None, label_bottom=None,
                   font_size=10, font_color=None,
                   name='',
                   pos_row=None, pos_col=None, chart_type='column',
@@ -592,11 +801,13 @@ class BKExcelWriter:
                   col_error_bar = None,
                   dict_scale=None,
                   value_hide_value=True,
-              value_hide_category=True,
-              value_hide_percent=True,
-              value_hide_leader=True,
-              x_axis_range=None,
-              y_axis_range=None
+                  value_hide_category=True,
+                  value_hide_percent=True,
+                  value_hide_leader=True,
+                  x_axis_range=None,
+                  y_axis_range=None,
+                  user_max_row:int=None,
+                  data_kind = "L"
               ):
 
         """Add a bar chart to the sheet
@@ -615,26 +826,60 @@ class BKExcelWriter:
         workbook = self.writer.book
         worksheet = self.writer.sheets[sheet_name]
 
+        #추가 : Graph 그릴 때 위에서 몇 개만 그릴 수 있게 헤주기 .(2024/11/16)
+        # 사업명 그릴 때는 그릴 수가 없음
         (max_row, max_col) = df.shape
+        max_row = max_row if user_max_row is None else user_max_row
 
         # col_end 입력하지 않으면 단일 컬럼 차트 그리기
         if col_end is None:
             col_end = col_begin
 
-
-
         self.chart_position()
         pos_row = self.pos_row
         pos_col = self.pos_col
 
+        # subtype : 'clusterd', 'stacked', 'percent_stacked'
         chart = workbook.add_chart({'type': chart_type, 'subtype': subtype})
+
+        # 컬럼 인덱스 번호 정리
         columns = df.columns.tolist()
-
         columns_list_no  = []
-        col_xi = columns.index(col_x)
-        col_error_bari = columns.index(col_error_bar) if col_error_bar in columns else None
-        #print(f"* col_error_bari={col_error_bari}, {col_error_bar}")
 
+        col_bottom = col_x
+        col_bottom_i = columns.index(col_x) if col_x in columns else 0 # columns[0]
+        col_begin_i = columns.index(col_begin) if col_begin is not None and col_begin in columns else 1 # columns[0]
+        col_end_i = columns.index(col_end) if col_end is not None and col_end in columns else 1 # columns[0]
+
+
+        # column 1 순위
+        if len(columns_list) > 0:
+            for each in columns_list:
+                columns_list_no.append(columns.index(each))
+            col_begin_i=columns_list_no[0]
+            col_end_i=columns_list_no[-1]
+
+        else: # 2순위, col_begin, col_end
+            columns_list_no = list(range(col_begin_i, col_end_i + 1))
+
+        # row 1 순위
+        rows_list_no = []
+        rows = df[col_x].tolist()
+        if len(rows_list) > 0:
+            for each in rows_list:
+                rows_list_no.append(rows.index(each)+1)
+        else:
+            #2순위, col_begin, col_end
+            row_begin_i = rows.index(row_begin) + 1 if row_begin is not None and row_begin in rows else 1
+            row_end_i = rows.index(row_end) + 1 if row_end is not None and row_end in rows else 1
+            rows_list_no = list(range(row_begin_i, row_end_i + 1))
+
+
+        #print(f">>> columns_list_no = {columns_list_no}")
+        #print(f">>> rows_list_no = {rows_list_no}")
+
+        col_error_bari = columns.index(col_error_bar) if col_error_bar is not None and col_error_bar in columns else None
+        #print(f"* col_error_bari={col_error_bari}, {col_error_bar}")
 
         # 소수점 표현
         if precision == 1:
@@ -652,46 +897,57 @@ class BKExcelWriter:
                       'separator': '\n',  # 레이블 사이에 구분자 설정
                      'leader_lines': False if value_hide_leader else True  # 리더 라인 (화살표 대체)
             }
+
         match chart_type.lower():
-            case 'bar'|'column'|'line'|'b'|'c'|'l'|'area'|'a'|'radar'|'r'|'scatter'|'s'|'pie'|'p'|'doughnut'|'d':
-                if len(columns_list)>0:
-                    for each in columns_list:
-                        columns_list_no.append(columns.index(each))
-                    # for col_i in columns_list_no:
-                    #     chart.add_series({
-                    #         'name':[sheet_name, 0, col_i],
-                    #         'categories': [sheet_name, 1, col_xi, max_row, col_xi],
-                    #         'values': [sheet_name, 1, col_i, max_row, col_i],
-                    #     })
-                else:
-                    col_1 = columns.index(col_begin)
-                    col_2 = columns.index(col_end)
-                    columns_list_no=list(range(col_1, col_2+1))
+            case 'bar'|'column'|'line'|'area'|'radar'|'scatter'|'pie'|'doughnut':
 
-                for col_i in columns_list_no:
-                    # error bar 설치
+                if data_kind == 'L': # Long Type
+                    for col_i in columns_list_no:
+                        # error bar 설치
+                        if col_error_bar is not None:
+                            #print(
+                            #    f"col_bottom_i={col_bottom_i}({columns[col_bottom_i]}), col_i={col_i}({columns[col_i]}), col_error_bari={col_error_bari}({columns[col_error_bari]})")
+                            chart.add_series({
+                                'name': [sheet_name, 0, col_bottom_i],
+                                #'name': [sheet_name, 0, 0],
+                                'categories': [sheet_name, 1, col_bottom_i, max_row, col_bottom_i],
+                                'values': [sheet_name, 1, col_i, max_row, col_i],
+                                'y_error_bars': {
+                                    'type': 'custom',
+                                    'plus_values': [sheet_name, 1, col_error_bari, max_row, col_error_bari],
+                                    'minus_values': [sheet_name, 1, col_error_bari, max_row, col_error_bari],
+                                }
+                            })
+                        else:
+                            #print(f">>> col_bottom={col_bottom}, col_bottom_i={col_bottom_i}, col_i={col_i}")
+                            chart.add_series({
+                                'name':[sheet_name, 0, col_i],
+                                'categories': [sheet_name, 1, col_bottom_i, max_row, col_bottom_i], # 시트이름, 시작행번호, 시작열번호, 끝행번호, 끝열번호
+                                'values': [sheet_name, 1, col_i, max_row, col_i],       # 시트이름, 시작행번호, 시작열번호, 끝행번호, 끝열번호
+                                'fill': {'transparency': alpha},
+                                'data_labels': data_labels_pie_chart if chart_type.lower() in ['pie','doughnut'] else {'percentage': False},
+                            })
+                elif data_kind == 'W': # Wide Type
+                    #for row_i in range(1, max_row+1):
+                    for row_i in rows_list_no:
+                        # error bar 설치
+                        if col_error_bar is not None:
+                            pass
+                            # print(
+                            #    f"col_bottom_i={col_bottom_i}({columns[col_bottom_i]}), col_i={col_i}({columns[col_i]}), col_error_bari={col_error_bari}({columns[col_error_bari]})")
+                        else:
+                            chart.add_series({
+                                'name': [sheet_name, row_i, 0],
+                                'categories': [sheet_name, 0, col_begin_i, 0, col_end_i],
+                                # 시트이름, 시작행번호, 시작열번호, 끝행번호, 끝열번호
+                                'values': [sheet_name, row_i, col_begin_i, row_i, col_end_i],  # 시트이름, 시작행번호, 시작열번호, 끝행번호, 끝열번호
+                                'fill': {'transparency': alpha},
+                                'data_labels': data_labels_pie_chart if chart_type.lower() in ['pie',
+                                                                                               'doughnut'] else {
+                                    'percentage': False},
+                            })
 
-                    if col_error_bar is not None:
-                        print(
-                            f"col_xi={col_xi}({columns[col_xi]}), col_i={col_i}({columns[col_i]}), col_error_bari={col_error_bari}({columns[col_error_bari]})")
-                        chart.add_series({
-                            'name': [sheet_name, 0, col_i],
-                            'categories': [sheet_name, 1, col_xi, max_row, col_xi],
-                            'values': [sheet_name, 1, col_i, max_row, col_i],
-                            'y_error_bars': {
-                                'type': 'custom',
-                                'plus_values': [sheet_name, 1, col_error_bari, max_row, col_error_bari],
-                                'minus_values': [sheet_name, 1, col_error_bari, max_row, col_error_bari],
-                            }
-                        })
-                    else:
-                        chart.add_series({
-                            'name':[sheet_name, 0, col_i],
-                            'categories': [sheet_name, 1, col_xi, max_row, col_xi],
-                            'values': [sheet_name, 1, col_i, max_row, col_i],
-                            'fill': {'transparency': alpha},
-                            'data_labels': data_labels_pie_chart if chart_type.lower() in ['pie','doughnut'] else {'percentage': False},
-                        })
+
 
             case _ :
                 print('* waring ! : chart_type is not defined correctly !')
@@ -713,9 +969,7 @@ class BKExcelWriter:
 
 
 
-        chart.set_legend({'none': legend_none,
-                          'size': legend_font_size,
-                          'position': legend_position})
+
 
         if subtype == 'percent_stacked' and chart_type=='column':
             chart.set_y_axis({
@@ -724,6 +978,11 @@ class BKExcelWriter:
                 'num_format': '0%',  # 퍼센트 형식
                 'major_gridlines': {'visible': True},  # 주요 그리드라인 표시
             })
+
+        chart.set_legend({'none': legend_none,
+                           'font':{'size': legend_font_size},
+                          'position': legend_position})
+
         dict_scale1 = {'x_scale': 1.0, 'y_scale': 1.0, 'width': 640, 'height': 480}
         dict_scale = dict_scale1 if dict_scale is None else dict_scale
         if dict_scale:
@@ -755,10 +1014,22 @@ class BKExcelWriter:
         self.pos_col = 1 + (self.graph_no-1) % self.w  * self.pos_col_delta + self.pos_col_initial
         #print(self.pos_row, self.pos_col)
 
+# 2024/11/18 added
+def make_top_years_table(df:DataFrame, col_category:str, col_PY:str, col_FUND:str, agg_method='sum'):
+    dfb = df.groupby([col_category, col_PY])[col_FUND].agg(agg_method).unstack(fill_value=0)
+    dfb['sum'] = dfb.sum(axis=1)
+
+    # 상위 10개만 추출
+    dfb['rank'] = dfb['sum'].rank(ascending=False, method='dense')
+    dfb['percentile'] = 100 * dfb['sum'].rank(pct=True, ascending=False)
+    dfb['share'] = 100 * dfb['sum'] / dfb['sum'].sum()
+    dfb.sort_values(by='sum', ascending=False, inplace=True)
+    dfb.reset_index(inplace=True)
+    return dfb
 
 
 # 2024/11/11 added
-def make_table_no1(df:DataFrame=None, col_left:str='PY', col_target:str=None)->DataFrame:
+def make_table_no1(df:DataFrame=None, col_left:str='PY', col_target:str=None, data_type='L')->DataFrame:
     print(f">>> make_table_no1(df, col_left, col_target)")
     if df is not None:
         df = df.copy()
@@ -791,25 +1062,51 @@ def make_table_no1(df:DataFrame=None, col_left:str='PY', col_target:str=None)->D
                                                                   'std',
                                                                   'count'])
     df_t1.reset_index(inplace=True)
-    df_t1['PY'] = df_t1['PY'].astype(int)
+    df_t1[col_left] = df_t1[col_left].astype(int)
     df_t1['ratio_fund'] = 100 * df_t1['sum'] / df_t1['sum'].sum()
     df_t1['ratio_count'] = 100 * df_t1['count'] / df_t1['count'].sum()
+    # ranking, percentile added
+    df_t1['rank'] = df_t1['sum'].rank(ascending=False, method='dense')
+    df_t1['percentile'] = 100 * df_t1['sum'].rank(pct=True, ascending=False)
+
+    if data_type == 'W':
+        df_t1.set_index(col_left, inplace=True)
+        df_t1 = df_t1.T.reset_index()
+        df_t1.rename(columns={'index':col_left}, inplace=True)
 
     return df_t1
 
-def make_table_other(df: DataFrame = None,
+
+
+
+
+
+
+
+def make_other(df: DataFrame = None,
                      col_threshold: str = 'ratio_fund',
                      threshold: float = 5,
-                     col_value={'PY':'Other'}) -> DataFrame:
+                     col_value:dict=None, by:str='upper', sorting:bool=False) -> DataFrame:
     # 2024/11/11
     # col_value = {'PY':'Other'}
 
     df = df.copy()
+    columns = df.columns.tolist()
+    if col_value is None:
+        col_value = {columns[0]:'Other'}
 
+    if col_threshold not in df.columns:
+        raise Exception("col_threshold must be your columns")
     # 임계값 이상과 미만으로 구분
-    above_threshold = df[df[col_threshold] >= threshold]
-    below_threshold = df[df[col_threshold] < threshold]
-
+    match by:
+        case 'upper':
+            above_threshold = df[df[col_threshold] >= threshold]
+            below_threshold = df[df[col_threshold] < threshold]
+        case 'lower':
+            above_threshold = df[df[col_threshold] <= threshold]
+            below_threshold = df[df[col_threshold] > threshold]
+        case _ :
+            raise ValueError("'by'는 'upper' 또는 'lower'만 가능합니다.")
     # 임계값 미만의 값들을 'Others'로 묶기
     if not below_threshold.empty:
         others_sum_temp = []
@@ -820,14 +1117,19 @@ def make_table_other(df: DataFrame = None,
                  value = below_threshold[col].sum()
             others_sum_temp.append(value)
         others_row = DataFrame([others_sum_temp], columns=df.columns, index=['Others'])
-
         # 임계값 이상인 값들을 큰 값 순으로 정렬
-        above_threshold_sorted = above_threshold.sort_values(by=[col_threshold], ascending=False)
+        if sorting:
+            above_threshold_sorted = above_threshold.sort_values(by=[col_threshold], ascending=False)
+        else:
+            above_threshold_sorted = above_threshold
         df_final = pd.concat([above_threshold_sorted, others_row], ignore_index=False)
     else:
         df_final = above_threshold.sort_values(by=[col_threshold], ascending=False)
 
     df_final.index = pd.RangeIndex(len(df_final.index))
+    # 순위 수정
+    #df_final.loc['other','rank']=len(df_final.index)
+
     return df_final
 
 
