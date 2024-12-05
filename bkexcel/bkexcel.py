@@ -2,6 +2,7 @@
 # 2024.10.09
 # 2024.10.23
 # 2024.11.19
+# 2024.12.5
 
 import os
 import datetime
@@ -247,23 +248,178 @@ class BKExcelWriter:
                 },
                 'marker': {'type': 'circle', 'size': line_marker_size}
             })
-
         # Set chart title and axes
         chart.set_title(
             {'name': title if title else 'Scatter Chart', 'name_font': {'size': title_font_size}, 'bold': True})
         chart.set_x_axis({'name': col_x if label_bottom is None else label_bottom})
         chart.set_y_axis({'name': col_y if label_left is None else label_left})
-
         # Set chart style
         chart.set_style(style_no)
-
         # Insert chart into sheet
         worksheet.insert_chart(pos_row, pos_col, chart)
+
+    def _get_scaled_sizes(self, df, col_index, row_size, col_begin, col_end, min_range, max_range):
+        """Calculate scaled sizes for chart markers."""
+        if not row_size:
+            return None
+        left_list = df[col_index].tolist()
+        columns_top = df.columns.tolist()
+        min_size = df.iloc[left_list.index(row_size), columns_top.index(col_begin): columns_top.index(col_end) +1].min()
+        max_size = df.iloc[left_list.index(row_size),  columns_top.index(col_begin): columns_top.index(col_end)+1].max()
+        values = df.iloc[left_list.index(row_size), columns_top.index(col_begin): columns_top.index(col_end) +1].tolist()
+        scaled_sizes = [
+            ((value - min_size) / (max_size - min_size)) * (max_range - min_range) + min_range
+            for value in values
+        ]
+        return [int(size) for size in scaled_sizes]
+
+    def chart_scatter_beta0_W(self, col_index='name',
+                              columns_list=[], col_begin=None, col_end=None,
+                              row_x=None,  row_y=None, row_size=None, row_name=None,
+                              name_of_evolution_track=None, title='',
+                              auto_no_title=True, pos_row=None, pos_col=None, style_no=None, fixed_node_size=None,
+                              min_range=10, max_range=30, title_font_size=10, line=False, line_width=8,line_color=None,
+                              line_marker_size=5, alpha=0.8, dict_scale=None, label_left=None, label_bottom=None,
+                              data_kind='W'):
+        """Insert scatter chart into Excel sheet."""
+        #try:
+        if True:
+            ic.disable()
+            self.graph_no += 1
+            title = f'Fig {self.graph_no}. ' + title if auto_no_title else title
+            df = self.df
+            #print(f"col_index={col_index}")
+            #print(f"df.columns={df.columns}")
+            # if col_index in df.columns:
+            #     left_list = df[col_index].tolist()
+            # else:
+            #     left_list = df.index.tolist()
+            sheet_name = self.sheet_name
+            workbook = self.writer.book
+            worksheet = self.writer.sheets[sheet_name]
+
+            columns1 = df.columns.tolist()
+            if col_index not in columns1:
+                print(f"col_index is {col_index}, but not in columns!")
+                col_index = columns1[0] # 제일 첫 컬럼을 자동으로 지정해 주기
+                print(f"col_index was automatically replaced by {col_index}")
+            rows_total = df[col_index].tolist()
+
+            #print(f"* rows_total: {rows_total}")
+            # 최대 값
+            (max_row, max_col) = df.shape
+            # X, Y, name, size 컬럼의 인덱스 결정
+            xi = 1 + rows_total.index(row_x) if row_x else 0
+            yi = 1 + rows_total.index(row_y) if row_y else 1
+            #print(f"xi={xi}, yi={yi}")
+            namei = rows_total.index(row_name) if row_name is not None else 0
+            #print("* namei", namei)
+            if style_no is None:
+                style_no = self.style_no
+            self.chart_position()
+            pos_row = self.pos_row if pos_row is None else pos_row
+            pos_col = self.pos_col if pos_col is None else pos_col
+
+            # Scatter chart 생성
+            chart = workbook.add_chart({'type': 'scatter'})
+            #ic()
+            col_size_list = None
+            if row_size:
+                if max_range > 72 :
+                    max_range = 72
+                scaled_sizes = self._get_scaled_sizes(df=df, col_index=col_index, row_size=row_size, col_begin=col_begin, col_end=col_end, min_range=min_range,max_range=max_range,)
+                print(f"scaled_sizes={scaled_sizes}")
+            ic()
+            # 각 컬럼에 대해 시리즈 추가
+            top_list = df.columns.tolist()[1:]
+
+            if col_begin is not None:
+                col_begin_i = fn_find_col_i(df, col=col_begin)
+            else:
+                col_begin_i = 0 + 1
+
+            if col_end is not None:
+                col_end_i = fn_find_col_i(df, col=col_end)
+            else:
+                col_end_i = len(top_list)
+            col_list_i = []
+
+            if top_list is not None:
+                for each_col in top_list:
+                    col_list_i.append(fn_find_col_i(df, col=each_col))
+
+            left_list_i = list(range(col_begin_i, col_end_i+1))
+            top_selected_list_i = left_list_i if top_list is not None else left_list_i
+            print(f"* top_selected_list_i=", top_selected_list_i)
+
+            i = 0
+            for ci in range(1, len(top_list) + 1):
+                if ci in top_selected_list_i :
+                    print(f"*i={i}, ci={ci}")
+                    series_options = {
+                        'name':       [sheet_name, 0, ci],
+                        'categories': [sheet_name, xi, ci, xi, ci],  # X축 데이터
+                        'values':     [sheet_name, yi, ci, yi, ci],      # Y축 데이터
+                        #'line':{'color':'blue'},
+                        'marker': {
+                            'type': 'circle',
+                            'size': scaled_sizes[i] if fixed_node_size is None else fixed_node_size,  # 마커 크기 설정
+                            'border':{'color':'black'},
+                            'line': {'color': 'black'},
+                        },
+                    }
+                    # series 추가
+                    chart.add_series(series_options)
+                    i +=1
+
+            # line 추가 부분
+            #if col_x in columns and col_y in columns:
+            #ic(f"{col_x}")
+            if line:
+                #row_xi = df.index.tolist().index(row_x)
+                #row_yi = df.index.tolist().index(row_y)
+                row_xi = xi
+                row_yi = yi
+
+                chart.add_series({
+                    #'name': [sheet_name, 0, row_xi],
+                    'name': 'Evolution Track' if name_of_evolution_track is None else name_of_evolution_track,
+                    'categories': [sheet_name, row_xi, col_begin_i, row_xi, col_end_i],
+                    'values': [sheet_name, row_yi, col_begin_i, row_yi, col_end_i],
+                    'fill': {'transparency': alpha},
+                    #'marker':{ 'size':line_marker_size,
+                    #           'type':'circle'},
+                    #'marker':{'type':None},
+                    'line':{'width':line_width, 'color': line_color if line_color else 'black'},
+                })
+                #print(745)
+
+            # 차트 제목과 축 설정
+            chart.set_title({'name': title if title else 'Scatter Chart',
+                             'name_font':{'size': title_font_size},
+
+                             'bold':True})
+            chart.set_x_axis({'name': row_x if label_bottom is None else label_bottom})
+            chart.set_y_axis({'name': row_y if label_left is None else label_left})
+
+            # 스타일 설정
+            chart.set_style(style_no)
+
+            # 차트를 시트에 삽입
+            #worksheet.insert_chart(pos_row, pos_col, chart)
+            dict_scale1 = {'x_scale': 1.0, 'y_scale': 1.0, 'width': 640, 'height': 480}
+            dict_scale = dict_scale1 if dict_scale is None else dict_scale
+            if dict_scale:
+                worksheet.insert_chart(pos_row, pos_col, chart, dict_scale)
+            else:
+                worksheet.insert_chart(pos_row, pos_col, chart)
+        #except Exception as err:
+        #    raise Exception(err)
 
 
     def chart_scatter_beta0(self, col_x=None, col_y=None, col_size=None, col_name=None,
                             name_of_evolution_track = None,
-                       title=None, auto_no_title=True,
+                            title=None, auto_no_title=True,
                             pos_row=None, pos_col=None,
                        style_no=None,
                        fixed_node_size=None,
@@ -271,7 +427,7 @@ class BKExcelWriter:
                        title_font_size=10,
                        line = False, line_width=8, line_marker_size=5,
                        alpha=0.8,
-                            dict_scale=None,
+                        dict_scale=None,
                        label_left=None, label_bottom=None):
         """Insert scatter chart into Excel sheet."""
         try:
@@ -280,33 +436,25 @@ class BKExcelWriter:
 
             df = self.df
             sheet_name = self.sheet_name
-
             workbook = self.writer.book
             worksheet = self.writer.sheets[sheet_name]
-
             columns = df.columns.tolist()
-
             # 최대 값
             (max_row, max_col) = df.shape
-
             # X, Y, name, size 컬럼의 인덱스 결정
             xi = columns.index(col_x) if col_x else 0
             yi = columns.index(col_y) if col_y else 1
             namei = columns.index(col_name) if col_name else None
-
             if style_no is None:
                 style_no = self.style_no
-
             self.chart_position()
             pos_row = self.pos_row if pos_row is None else pos_row
             pos_col = self.pos_col if pos_col is None else pos_col
-
             # Scatter chart 생성
             #if line :
             #    chart = workbook.add_chart({'type': 'scatter', 'subtype':'straight_with_markers'})
             #else:
             chart = workbook.add_chart({'type': 'scatter'})
-
 
             col_size_list = None
             if col_size:
@@ -392,6 +540,8 @@ class BKExcelWriter:
                 worksheet.insert_chart(pos_row, pos_col, chart)
         except Exception as err:
             raise Exception(err)
+
+
 
     def chart_combined_v3(self,
                           col_bottom=None,
@@ -789,10 +939,11 @@ class BKExcelWriter:
 
 
     def chart(self, col_x=None,
+
                   columns_list=[], col_begin=None, col_end=None, col_value_list=None,
                   rows_list=[], row_begin=None, row_end=None,
                   title='', title_font_size=10, auto_no_title=True,
-                  label_left=None,label_right=None, label_bottom=None,
+                  label_left=None, label_right=None, label_bottom=None,
                   font_size=10, font_color=None,
                   name='',
                   pos_row=None, pos_col=None, chart_type='column',
@@ -807,20 +958,28 @@ class BKExcelWriter:
                   x_axis_range=None,
                   y_axis_range=None,
                   user_max_row:int=None,
-                  data_kind = "L"
+                  data_kind = "L",
+              verbose=False
               ):
 
         """Add a bar chart to the sheet
         col_x 에서 col_y 까지 컬럼 추출하여 그려줌
         """
         self.graph_no += 1
-
+        #ic()
         title = f'Fig {self.graph_no}. ' + title if auto_no_title else title
 
         df = self.df
         sheet_name =  self.sheet_name
         if col_x is None:
-            col_x = self.x_column
+            if data_kind == "L":
+                col_x = self.x_column
+            else:
+                col_x = df.columns.tolist()[0]
+
+        if verbose:
+            print(f"col_x or col_bottom={col_x}")
+
         style_no = self.style_no if style_no is None else style_no
 
         workbook = self.writer.book
@@ -847,10 +1006,19 @@ class BKExcelWriter:
         columns_list_no  = []
 
         col_bottom = col_x
-        col_bottom_i = columns.index(col_x) if col_x in columns else 0 # columns[0]
-        col_begin_i = columns.index(col_begin) if col_begin is not None and col_begin in columns else 1 # columns[0]
-        col_end_i = columns.index(col_end) if col_end is not None and col_end in columns else 1 # columns[0]
+        col_bottom_i = columns.index(col_bottom) if col_bottom in columns else 0 # columns[0]
 
+        # Check if col_begin is valid and determine its index
+        if (col_begin is not None) and (col_begin in columns):
+            col_begin_i = columns.index(col_begin)
+        else:
+            raise ValueError(f"Invalid column: {col_begin}")
+
+        # Check if col_end is valid and determine its index
+        if (col_end is not None) and (col_end in columns):
+            col_end_i = columns.index(col_end)
+        else:
+            raise ValueError(f"Invalid column: {col_end}")
 
         # column 1 순위
         if len(columns_list) > 0:
@@ -868,15 +1036,18 @@ class BKExcelWriter:
         if len(rows_list) > 0:
             for each in rows_list:
                 rows_list_no.append(rows.index(each)+1)
+
         else:
             #2순위, col_begin, col_end
             row_begin_i = rows.index(row_begin) + 1 if row_begin is not None and row_begin in rows else 1
             row_end_i = rows.index(row_end) + 1 if row_end is not None and row_end in rows else 1
             rows_list_no = list(range(row_begin_i, row_end_i + 1))
 
-
-        #print(f">>> columns_list_no = {columns_list_no}")
-        #print(f">>> rows_list_no = {rows_list_no}")
+        if verbose == True:
+            print(f">>> verbose={verbose}, data_kind={data_kind}")
+            print(f">>> columns_list_no = {columns_list_no}")
+            print(f">>> rows_list_no = {rows_list_no}")
+            print(f">>> *** ")
 
         col_error_bari = columns.index(col_error_bar) if col_error_bar is not None and col_error_bar in columns else None
         #print(f"* col_error_bari={col_error_bari}, {col_error_bar}")
@@ -900,7 +1071,6 @@ class BKExcelWriter:
 
         match chart_type.lower():
             case 'bar'|'column'|'line'|'area'|'radar'|'scatter'|'pie'|'doughnut':
-
                 if data_kind == 'L': # Long Type
                     for col_i in columns_list_no:
                         # error bar 설치
@@ -930,6 +1100,8 @@ class BKExcelWriter:
                 elif data_kind == 'W': # Wide Type
                     #for row_i in range(1, max_row+1):
                     for row_i in rows_list_no:
+                        if verbose:
+                            print(f">>> row_i = {row_i}, col_begin_i={col_begin_i}, col_end_i={col_end_i}")
                         # error bar 설치
                         if col_error_bar is not None:
                             pass
@@ -1197,6 +1369,15 @@ def make_graph_fund(df, filename='temp1.xlsx', w=4,
     except Exception as e:
         print(f"*** error = {e}")
 
+
+def fn_find_col_i(df, col):
+    # Check if col is valid and determine its index
+    columns = df.columns.tolist()
+    if (col is not None) and (col in columns):
+        col_i = columns.index(col)
+    else:
+        raise ValueError(f"Invalid column: {col}")
+    return col_i
 
 
 
