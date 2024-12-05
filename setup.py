@@ -40,7 +40,7 @@ except FileNotFoundError:
 
 setup(
     name="bkexcel",
-    version="0.1.1",
+    version="0.1.2",
     author="BK Choi",
     author_email="stsboongkee@gmail.com",
     description="This program helps enhance user convenience when saving a pandas DataFrame to an Excel file by adding Excel sheets and Excel charts.",
