@@ -5,6 +5,7 @@
 # 2024.12.5
 # 2024.12.10
 # 2024.12.31
+# 2025.1.3 update at chart_scatter_beta0
 
 import os
 import datetime
@@ -15,19 +16,10 @@ import pandas as pd
 from pandas import DataFrame, Series
 import numpy as np
 
-from unicodedata import category
 from icecream import ic
-from win32comext.adsi.demos.scp import verbose
-
 from xlsxwriter.utility import xl_rowcol_to_cell, xl_range, xl_range_abs
 
-def generate_filename_with_timestamp(original_filename):
-    # 파일명과 확장자를 분리
-    base_name, extension = os.path.splitext(original_filename)
-    # 현재 시간을 "YYYYMMDD_HHMMSS" 형식으로 가져오기
-    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    # 파일 이름에 시간 정보를 추가하여 반환
-    return f"{base_name}_{current_time}{extension}"
+
 
 class BKExcelWriter:
     def __init__(self, writer=None, save_file_name=None, engine='xlsxwriter', sheet_name=None, add_prefix=True):
@@ -48,6 +40,11 @@ class BKExcelWriter:
         self.pos_col_initial = 0
         self.w = 1 # 횡축 차트 개수
         self.style_no = 11
+
+        self.col_pie_list = None
+        self.rows_list = None
+        self.col_begin = None
+        self.col_end = None
 
     def to_sheet(self, df:DataFrame=None, sheet_name:str='Sheet1',
                  dic_width:dict={'논문수': 8, '총피인용수': 10},
@@ -285,7 +282,9 @@ class BKExcelWriter:
                               name_of_evolution_track=None, title='',
                               auto_no_title=True, pos_row=None, pos_col=None, style_no=None, fixed_node_size=None,
                               min_range=10, max_range=50, title_font_size=10, line=False, line_width=8,line_color=None,
-                              line_marker_size=5, alpha=0.8, dict_scale=None, label_left=None, label_bottom=None,
+                              line_marker_size=5, alpha=0.8, dict_scale=None,
+                              label_left=None, label_bottom=None,
+                              left_axis_title=None, bottom_axis_title=None,
                               data_kind='W', verbose=False):
         """Insert scatter chart into Excel sheet."""
         #print(">>> chart_scatter_beta0_W()")
@@ -409,8 +408,8 @@ class BKExcelWriter:
                              'name_font':{'size': title_font_size},
 
                              'bold':True})
-            chart.set_x_axis({'name': row_x if label_bottom is None else label_bottom})
-            chart.set_y_axis({'name': row_y if label_left is None else label_left})
+            chart.set_x_axis({'name': row_x if bottom_axis_title is None else bottom_axis_title})
+            chart.set_y_axis({'name': row_y if left_axis_title is None else left_axis_title})
 
             # 스타일 설정
             chart.set_style(style_no)
@@ -428,6 +427,7 @@ class BKExcelWriter:
 
 
     def chart_scatter_beta0(self, col_x=None, col_y=None, col_size=None, col_name=None,
+                            rows_list=None,
                             name_of_evolution_track = None,
                             title=None, auto_no_title=True,
                             pos_row=None, pos_col=None,
@@ -440,6 +440,7 @@ class BKExcelWriter:
                         dict_scale=None,
                        label_left=None, label_bottom=None):
         """Insert scatter chart into Excel sheet."""
+        print(f">>> chart_scatter_beta0()")
         try:
             self.graph_no += 1
             title = f'Fig {self.graph_no}. ' + title if auto_no_title else title
@@ -491,9 +492,18 @@ class BKExcelWriter:
                 except ValueError:
                     raise ValueError(f"Column {col_size} contains non-integer values. Ensure all values are integers.")
 
-            # 각 행에 대해 시리즈 추가
-            for i in range(1, len(df.index) + 1):
+            # selected rows list  2025.1.2
+            rows_list_i = []
+            col_name = col_name if col_name is not None else columns[0]
+            index_list = df[col_name].tolist()
+            for each in rows_list:
+                row_i = fn_find_col_index(index_list, each) + 1
+                rows_list_i.append(row_i)
 
+            # 각 행에 대해 시리즈 추가
+            #for i in range(1, len(df.index) + 1):
+            no_i = 1
+            for i in rows_list_i:
                 series_options = {
                     'name': [sheet_name, i, namei] if namei is not None else '',
                     'categories': [sheet_name, i, xi, i, xi],  # X축 데이터
@@ -505,9 +515,12 @@ class BKExcelWriter:
                         'border':{'color':'black'},
                         'line': {'color': 'black'},
                     },
+
+                    'y2_axis':False if no_i == 1 else True, # 좀 이상해 보여도 적어도 1개는  False 로 지정해 줘야 함
                 }
                 # series 추가
                 chart.add_series(series_options)
+                no_i += 1
 
             # line 추가 부분
             #if col_x in columns and col_y in columns:
@@ -532,10 +545,16 @@ class BKExcelWriter:
             # 차트 제목과 축 설정
             chart.set_title({'name': title if title else 'Scatter Chart',
                              'name_font':{'size': title_font_size},
-
                              'bold':True})
-            chart.set_x_axis({'name': col_x if label_bottom is None else label_bottom})
-            chart.set_y_axis({'name': col_y if label_left is None else label_left})
+            chart.set_x_axis({'name': col_x if label_bottom is None else label_bottom,
+                             'line': {'color':'black'} })
+            chart.set_y_axis({'name': col_y if label_left is None else label_left,
+                              'line': {'color': 'black'} ,
+                              'major_gridlines': {'visible': True},
+                              })
+            chart.set_y2_axis({'line': {'color':'black'} ,
+                               'major_gridlines': {'visible': False},
+                               })
 
             # 스타일 설정
             chart.set_style(style_no)
@@ -1220,13 +1239,14 @@ class BKExcelWriter:
     def set_width(self, w=3):
         self.w = w
 
-    def set_settings(self, x_column=None, w=2, left_gap=8, style_no=11, graph_no=0):
+    def set_settings(self, x_column=None, w=2, left_gap=8, style_no=None, graph_no=0):
         if x_column is not None:
             self.set_x(name=x_column)
         self.w=w # 횡축 차트수
         self.pos_col_initial=left_gap
-        self.style_no=style_no
+        self.style_no=style_no if style_no is not None else self.style_no
         self.graph_no=graph_no
+        print(f"*settings : style_no={self.style_no}")
 
     def chart_position(self):
         # pos_row 자동 할당하기
@@ -1236,7 +1256,7 @@ class BKExcelWriter:
 
     def chart_total(self, df:DataFrame=None,
                     w:int=3,
-                    style_no:int=10,
+                    style_no:int=None,
                     title_font_size:int=12,
                     dic_precison={},
                     sheet_no=0,
@@ -1246,27 +1266,41 @@ class BKExcelWriter:
                     col_end=None,
                     row_left_list=None,
                     row_right_list = None,
-                    row_x = None,
-                    row_y = None,
-                    row_size = None,
-                    col_sum_list = None,
+
+                    col_pie_list = None,
                     col_x = None,
                     col_y = None,
                     col_size = None,
-                    bottom_axis_title = None,
+                    fixed_node_size_sc=10,
+                    rows_list_sc = None,
+
                     left_name_list = None,
                     right_name_list = None,
-                    label_bottom=None,
-                    label_left=None,
 
-                    left_axis_title = None,                    right_axis_title = None,
-                    left_chart_style='column',                    right_chart_style='line',
+                    # line etc (line)
+                    left_axis_title_line=None,
+                    bottom_axis_title_line=None,
 
+                    # combined graph (cb)
+                    left_axis_title_cb = None,
+                    right_axis_title_cb = None,
+                    bottom_axis_title_cb=None,
+                    left_chart_style='column',
+                    right_chart_style='line',
+
+                    # evolution pathway (ep)
                     max_range=None,
                     min_range=None,
                     col_index=None,
-                    fixed_node_size=None,
+
                     evolution_pathway_lw=4,
+
+                    row_x=None,
+                    row_y=None,
+                    row_size=None,
+                    left_axis_title_ep=None,
+                    bottom_axis_title_ep=None,
+                    fixed_node_size_ep=None,
 
                     tf_pie=True,
                     tf_doughnut = True,
@@ -1276,11 +1310,38 @@ class BKExcelWriter:
                     tf_area = True,
                     tf_radar = True,
                     tf_scatter1 = True,
-                    tf_scatter2 = True,
-                    tf_combined = True,
-                    tf_evolution = True
+                    tf_scatter2 = False,
+                    tf_set1 = True,
+                    tf_combined = False,
+                    tf_evolution = False,
+
+
+                    sheet_name = None,
     ):
         """전체 그래프 그리기"""
+        col_pie_list = self.col_pie_list if col_pie_list is None else col_pie_list
+        rows_list = self.rows_list if rows_list is None else rows_list
+        col_begin = self.col_begin if col_begin is None else col_begin
+        col_end = self.col_end if col_end is None else col_end
+
+        if style_no is not None:
+            self.style_no = style_no
+
+
+        if tf_set1 :
+            pass
+        else:
+            tf_pie=False
+            tf_doughnut=False
+            tf_column=False
+            tf_line=False
+            tf_bar=False
+            tf_area=False
+            tf_radar=False
+            tf_scatter1=False
+            #tf_scatter2=False
+
+
         col_bottom = col_bottom if col_bottom is not None else df.columns.tolist()[0]
 
         columns_all = df.columns.tolist()
@@ -1295,17 +1356,19 @@ class BKExcelWriter:
         row_y = row_y if row_y is not None else rows_list[1]
         row_size = row_size if row_size is not None else rows_list[0]
 
-        col_sum_list = col_sum_list if col_sum_list is not None else 'sum'
-        col_x = col_x if col_x is not None else 'sum'
-        col_y = col_y if col_y is not None else 'ratio1'
-        col_size = col_size if col_size is not None else'sum'
+        col_pie_list = col_pie_list if col_pie_list is not None else 'sum'
 
-        bottom_axis_title = bottom_axis_title if bottom_axis_title is not None else 'bottom_axis_title'
-        left_name_list = left_name_list if left_name_list is not None else [rows_list[0]]
-        right_name_list =right_name_list if right_name_list is not None else [rows_list[1]]
+        # scatter2 : Long type
+        col_x = col_x if col_x is not None else columns_all[-2]
+        col_y = col_y if col_y is not None else columns_all[-1]
+        col_size = col_size if col_size is not None else columns_all[-1]
 
-        label_left = 'label_left' if label_left is None else label_left
-        label_bottom = 'label_bottom' if label_bottom is None else label_bottom
+        bottom_axis_title_cb =bottom_axis_title_cb if bottom_axis_title_cb is not None else 'bottom_axis_title'
+        left_name_list = left_name_list if left_name_list is not None else row_left_list
+        right_name_list =right_name_list if right_name_list is not None else row_right_list
+
+        left_axis_title_line = 'left_axis_title_line' if left_axis_title_line is None else left_axis_title_line
+        bottom_axis_title_line = 'bottom_axis_title_line' if bottom_axis_title_line is None else bottom_axis_title_line
         max_range = max_range if max_range is not None else 30
         min_range = min_range if min_range is not None else 10
 
@@ -1315,8 +1378,9 @@ class BKExcelWriter:
                 dic_precision = fn_dictionary_precision(df_each)
                 dic_width = {'name': 40}
                 sheet_no += 1
+                sheet_name = sheet_name if sheet_name is not None else f"Table{sheet_no}"
                 self.set_settings(x_column=col_bottom, w=w, left_gap=find_left_gap(df_each), style_no=style_no)
-                self.to_sheet(df=df_each, sheet_name=f"Table{sheet_no}", dic_precision=dic_precision, dic_width=dic_width,
+                self.to_sheet(df=df_each, sheet_name=sheet_name, dic_precision=dic_precision, dic_width=dic_width,
                             fixed_width=8)
 
                 chart_func = partial(self.chart,
@@ -1324,19 +1388,19 @@ class BKExcelWriter:
                                      rows_list=rows_list,
                                      title=f"Test ",
                                      legend_none=False, title_font_size=title_font_size,
-                                     label_bottom=label_bottom, label_left=label_left,
+                                     label_bottom=bottom_axis_title_line, label_left=left_axis_title_line,
                                      data_kind='W',
                                      data_labels_tf=True,
                                      verbose=False)
 
 
-                if len(col_sum_list) > 0 :
-                    for col_sum in col_sum_list:
+                if len(col_pie_list) > 0 :
+                    for col_sum in col_pie_list:
                         if col_sum in df_each.columns:
                             if tf_pie:
                                 chart_func(title=f"pie '{col_sum}'-L", chart_type='pie', col_begin=col_sum, col_end=col_sum,
                                            value_hide_value=False, value_hide_percent=False, data_kind='L')
-                                chart_func(title=f"column '{col_sum}'-L", chart_type='column', col_begin=col_sum, col_end=col_sum, label_bottom='Category', label_left=label_left,
+                                chart_func(title=f"column '{col_sum}'-L", chart_type='column', col_begin=col_sum, col_end=col_sum, label_bottom='Category', label_left=left_axis_title_line,
                                            value_hide_value=False, value_hide_percent=False,data_kind='L')
                                 chart_func(title=f"bar '{col_sum}'-L", chart_type='bar', col_begin=col_sum, col_end=col_sum, label_left='Category', label_bottom='Category',
                                            data_kind='L')
@@ -1345,7 +1409,7 @@ class BKExcelWriter:
                                            value_hide_value=True, value_hide_percent=False, data_kind='L')
 
                                 chart_func(title=f"column '{col_sum}'-W", chart_type='column', col_begin=col_sum, col_end=col_sum,
-                                           label_bottom='Category', label_left=label_left,
+                                           label_bottom='Category', label_left=left_axis_title_line,
                                            value_hide_value=False, value_hide_percent=False, data_kind='W')
                                 chart_func(title=f"bar '{col_sum}'-W", chart_type='bar', col_begin=col_sum, col_end=col_sum,
                                            label_left='Category', label_bottom='Category',
@@ -1373,15 +1437,16 @@ class BKExcelWriter:
 
                 if len(graph_type_list) > 0:
                     for each_kind in graph_type_list:
-                        if each_kind == 'bar':
-                            label_bottom1 = label_left
-                            label_left1 = label_bottom
-                            chart_func(title=f"{each_kind}-W", chart_type=each_kind, label_bottom=label_bottom1, label_left=label_left1)
+                        if each_kind in ['bar']:
+                            bottom_axis_title_temp = left_axis_title_line
+                            left_axis_title_temp = bottom_axis_title_line
+                            chart_func(title=f"{each_kind}-W", chart_type=each_kind, label_bottom=bottom_axis_title_temp, label_left=left_axis_title_temp)
+                            for each_sub in ['stacked', 'percent_stacked']:
+                                chart_func(title=f"{each_kind}_{each_sub}-W", chart_type=each_kind, subtype=each_sub, label_bottom=bottom_axis_title_temp, label_left=left_axis_title_temp)
                         else:
                             chart_func(title=f"{each_kind}-W", chart_type=each_kind)
-
-                        for each_sub in ['stacked', 'percent_stacked']:
-                            chart_func(title=f"{each_kind}_{each_sub}-W", chart_type=each_kind, subtype=each_sub)
+                            for each_sub in ['stacked', 'percent_stacked']:
+                                chart_func(title=f"{each_kind}_{each_sub}-W", chart_type=each_kind, subtype=each_sub)
                         if each_kind == 'line':
                             line_marker = {'type': 'circle', 'size': 10, 'fill': {'color': '#ffffff'}}
                             chart_func(title=f"line2 -W", chart_type="line", line_marker=line_marker, data_labels_tf=True)
@@ -1402,24 +1467,31 @@ class BKExcelWriter:
                     chart_func(title=f"scatterI-3 'smooth'", chart_type='scatter', subtype='smooth')
 
                 if tf_scatter2:
-                    if col_x in df_each.columns and col_y in df_each.columns and col_size in df_each.columns:
+                    #print(f"*1 tf_scatter2={tf_scatter2} : col_x={col_x}, col_y={col_y}, col_size={col_size}")
+                    condition1 = col_x in df_each.columns and col_y in df_each.columns and col_size in df_each.columns
+                    #print(f"condition={condition1}")
+                    if condition1:
+                        rows_list_sc = rows_list_sc if rows_list_sc is not None else rows_list
                         graph_ep2 = partial(self.chart_scatter_beta0,
                                             # col_name='항목',
                                             style_no=style_no,
-                                            min_range=min_range, max_range=max_range)
-                        graph_ep2(title=f"Graph scatterII - 1", col_x=col_x, col_y=col_y, col_size=col_size)
-                        graph_ep2(title=f"Graph scatterII - 2", col_x=col_y, col_y=col_x, col_size=col_size)
-                        graph_ep2(title=f"Graph scatterII - 3", col_x=col_y, col_y=col_x, col_size=col_size)
-                        if verbose:
-                            print(f"* col_x={col_x}, col_y={col_y}, col_size={col_size}")
+                                            min_range=min_range, max_range=max_range,
+                                            rows_list=rows_list_sc)
+                        graph_ep2(title=f"Graph scatterII - 1 style_no={style_no}, size=f\'{col_size}\'", col_x=col_x, col_y=col_y, col_size=col_size)
+                        graph_ep2(title=f"Graph scatterII - 2 style_no={style_no}, size={fixed_node_size_sc}", col_x=col_x, col_y=col_y, fixed_node_size=fixed_node_size_sc)
+                        graph_ep2(title=f"Graph scatterII - 3 style_no=26, size=f\'{col_size}'",         col_x=col_x, col_y=col_y, col_size=col_size, style_no=26)
+
+                        if False:
+                            print(f"*2* col_x={col_x}, col_y={col_y}, col_size={col_size}")
 
                 if tf_radar:
                     chart_func(title=f"radar1", chart_type='radar')
                     chart_func(title=f"radar2", chart_type='radar', subtype='with_markers')
                     chart_func(title=f"radar3", chart_type='radar', subtype='filled')
 
-                if tf_combined:  # combined graph
+                if tf_combined :  # combined graph
                     line_marker = {'type': 'circle', 'size': 10, 'fill': {'color': '#ffffff'}}
+                    #print(f"* row_left_list={row_left_list}, row_right_list={row_right_list}")
                     graph_combined = partial(self.chart_combined_v3,
                                              # col_bottom='항목',
                                              row_left_list=row_left_list,
@@ -1430,9 +1502,9 @@ class BKExcelWriter:
                                              title_font_size=title_font_size,
                                              left_name_list=left_name_list,  # ['항목1 이름'],
                                              right_name_list=right_name_list,  # ['항목 2 이름'],
-                                             left_axis_title=left_axis_title,  # "항목 1 왼쪽 축 타이틀",
-                                             right_axis_title=right_axis_title,  # "항목2 오른쪽 축 타이틀",
-                                             bottom_axis_title=bottom_axis_title,
+                                             left_axis_title=left_axis_title_cb,  # "항목 1 왼쪽 축 타이틀",
+                                             right_axis_title=right_axis_title_cb,  # "항목2 오른쪽 축 타이틀",
+                                             bottom_axis_title=bottom_axis_title_cb,
                                              left_chart_style=left_chart_style,
                                              right_chart_style=right_chart_style,
                                              data_kind='W',
@@ -1453,21 +1525,27 @@ class BKExcelWriter:
                                        max_range=max_range,
                                        min_range=min_range,
                                        # title=f"Sample, lw={lw}",
+                                       left_axis_title=left_axis_title_ep,
+                                       bottom_axis_title=bottom_axis_title_ep,
                                        line=True,
                                        line_width=lw,
                                        line_color="#749040",
                                        style_no=style_no)
-                    graph_ep(title=f"Evolution Pathway, lw={lw}, style no={style_no} node_size=10", row_x=row_x, row_y=row_y,
-                             row_size=row_size, fixed_node_size=10)
-                    graph_ep(title=f"Evolution Pathway, lw={lw}, style no={style_no} node_size=12)", row_x=row_x, row_y=row_y,
+                    graph_ep(title=f"Evolution Pathway, lw={lw}, style no={self.style_no} node_size={fixed_node_size_ep}", row_x=row_x, row_y=row_y,
+                             row_size=row_size, fixed_node_size=fixed_node_size_ep)
+                    graph_ep(title=f"Evolution Pathway, lw={lw}, style no={self.style_no} node_size=12)", row_x=row_x, row_y=row_y,
                              row_size=row_size, fixed_node_size=12)
-                    graph_ep(title=f"Evolution Pathway, lw={lw}, style no={style_no} node_size=12, ({min_range}, {max_range})", row_x=row_x,
+                    graph_ep(title=f"Evolution Pathway, lw={lw}, style no={self.style_no} node_size={col_size}, ({min_range}, {max_range})", row_x=row_x,
                              row_y=row_y,                row_size=row_size)
                     lw = evolution_pathway_lw
                     for each_style_no, each_min, each_max in zip([27, 28, 29],[10,20,30], [30,30,30]):
                         graph_ep(title=f"Evolutonn Pathway, lw={lw}, style_no={each_style_no}, ({each_min}-{each_max})", row_x=row_y,
                                  row_y=row_x, row_size=row_size, style_no=each_style_no, max_range=each_max, min_range=each_min)
-
+        # 내부 변수 지정
+        self.col_pie_list = col_pie_list
+        self.rows_list = rows_list
+        self.col_begin = col_begin
+        self.col_end = col_end
 
 # 2024/11/18 added
 def make_top_years_table(df:DataFrame, col_category:str, col_PY:str, col_FUND:str, agg_method='sum'):
@@ -1662,6 +1740,14 @@ def fn_find_col_i(df, col):
         raise ValueError(f"Invalid column: {col}")
     return col_i
 
+def fn_find_col_index(columns:list, col:str)-> int:
+    # Check if col is valid and determine its index
+    if (col is not None) and (col in columns):
+        col_i = columns.index(col)
+    else:
+        raise ValueError(f"Invalid column: {col}")
+    return col_i
+
 
 def fn_dictionary_precision(df:DataFrame, stop_columns=['PY','count']):
     """정밀도 사전"""
@@ -1692,6 +1778,14 @@ def find_left_gap(df:DataFrame=None, no=None) -> int:
     else:
         left_gap = len(df.columns) if len(df.columns) < no else no
     return left_gap
+
+def generate_filename_with_timestamp(original_filename):
+    # 파일명과 확장자를 분리
+    base_name, extension = os.path.splitext(original_filename)
+    # 현재 시간을 "YYYYMMDD_HHMMSS" 형식으로 가져오기
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # 파일 이름에 시간 정보를 추가하여 반환
+    return f"{base_name}_{current_time}{extension}"
 
 if __name__ == '__main__':
     ex = help(BKExcelWriter)
