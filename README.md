@@ -106,7 +106,6 @@ ex.close()
 
 ```
 
-```
 ## Example 3 (2025.1..8)
 ```
 dict1 = {'category': {1: 'FUND1', 2: 'FUND2', 3: 'PCT'},
