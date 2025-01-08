@@ -105,3 +105,76 @@ ex.chart_scatter(col_x=col_y1, col_y=col_y2, col_size=col_y3, col_name=col_x,
 ex.close()
 
 ```
+
+```
+## Example 3 (2025.1..8)
+```
+dict1 = {'category': {1: 'FUND1', 2: 'FUND2', 3: 'PCT'},
+ 2012: {1: 13822078.0, 2: 41628038.0, 3: 3.85},
+ 2013: {1: 14241744.0, 2: 45059205.0, 3: 3.95},
+ 2014: {1: 15275007.0, 2: 48459119.0, 3: 4.08},
+ 2015: {1: 16293518.0, 2: 49665854.0, 3: 3.98},
+ 2016: {1: 16410047.0, 2: 52995483.0, 3: 3.99},
+ 2017: {1: 17737134.0, 2: 61052054.0, 3: 4.29},
+ 2018: {1: 18363011.0, 2: 67365704.0, 3: 4.52},
+ 2019: {1: 19095480.0, 2: 69951597.0, 3: 4.63},
+ 2020: {1: 21581228.0, 2: 71490459.0, 3: 4.8},
+ 2021: {1: 24094954.0, 2: 78040289.0, 3: 4.91},
+ 2022: {1: 26328329.0, 2: 86317679.0, 3: 5.21},
+ 'sum': {1: 203242530.0, 2: 672025481.0, 3: 48.21},
+ 'r_new': {1: 0.35427875750218224,
+  2: 0.35095161369335043,
+  3: 0.30947936112839664}}
+df = DataFrame.from_dict(dict1)
+
+style_no = 12 # 15 # 17 #18 # 16 
+
+ex = be.BKExcelWriter(save_file_name=f"Test_style_no_{style_no}.xlsx")
+ex.set_settings(style_no=style_no, df=df)
+#ex.chart_total()
+
+ex.set_data(   col_pie_list=['sum'], 
+               col_doughnut_list=['sum'],
+               col_column_list=['sum'],
+               col_bar_list=['sum'],
+
+               rows_list=['FUND1','FUND2'],   
+               col_begin=2012, col_end=2022, 
+               left_axis_title_line='FUND',
+               bottom_axis_title_line='Year')
+
+ex.chart_total(tf_graph1=True,
+               col_pie_list=['sum'], 
+               col_doughnut_list=['sum'],
+               col_column_list=['sum'],
+               col_bar_list=['sum']
+    )
+
+ex.chart_total(tf_trend_graph=True, sheet_name='sheet2')
+ex.chart_total(
+               #tf_set1 = False, 
+               # scatter graph (Long)
+               tf_scatter2=True,
+               col_x='sum', col_y='r_new', col_size='sum',
+               rows_list_sc = ['FUND1', 'FUND2'],
+               fixed_node_size_sc=20,
+
+               # combined graph 
+               tf_combined=True,
+               row_left_list=['FUND1', 'FUND2'],  row_right_list=['PCT'],
+               left_name_list=['FUND1', 'FUND2'], right_name_list=['PCT'],
+               left_axis_title_cb='FUND(M)', right_axis_title_cb='PCT(%)', 
+               bottom_axis_title_cb='Bottom : Year', 
+
+               # evolution track graph
+               tf_evolution=True,
+               row_x='FUND1', row_y='FUND2', row_size='PCT',
+               left_axis_title_ep='Fund1(M)', bottom_axis_title_ep='Fund2(M)',
+               fixed_node_size_ep=16,
+               sheet_name='sheet3')
+ex.close()
+
+```
+
+
+
